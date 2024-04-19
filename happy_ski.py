@@ -2,82 +2,119 @@
 Jiajun Fang
 DS 5010 Final Project
 4/12/2024
-
 """
 import pandas as pd
 import numpy as np
 # ML libraries
-import sklearn
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, classification_report, confusion_matrix
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, make_scorer, r2_score
 from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LinearRegression
-
-from mlxtend.feature_selection import ExhaustiveFeatureSelector as EFS # Can replace using gridsearchCV
-
+from sklearn.linear_model import ElasticNet
+from ski_gear_recommend import SkiGearRecommender
 class happyski:
     """
-    Package that allows user to:
-    1. train a machine learning ski resort rating system
-    2. Rating new ski resort data
-    3. Update models based on new predicted data
-    4. Allow users to make custom ratings if they are dissatisfied wth the predicted ratings
+    happyski is a package for ski lovers to train a ski resort rating system based on
+	an existing dataset with ski resort conditions and its subjective ratings by other
+	skiiers. After model training, user can ues the rating system to rate new ski resort
+	data to provide them with a score from 1-5, and provide gear recommendation for users
+	based on weather conditions.
     """
     def __init__(self, data_filepath, predict_filepath, model=None):
-        """Have default models and dataset ready"""
-        self.dataset = pd.read_csv(data_filepath, encoding='cp1252')  # Saves the main excel file
-        # Clean data
-        self.dataset = self.clean_data(self.dataset)
+        """
+        Initialize the ski resort dataest, prediction dataset, and model
+        param data_filepath: file path for the main training dataset
+        param predict_filepath: file path for the prediction dataset
+        param model: the model we will later use to predict dataset (default is None)
+        """
 
-        self.prediction = pd.read_csv(predict_filepath, encoding='cp1252')  # Saves user dataframe/datapoint
-        # Clean prediction
-        # self.prediction = self.clean_data(self.prediction)
-
-        self.model = model  # Saves the ML model
+        self.dataset = pd.read_csv(data_filepath, encoding='cp1252') # Import main dataset
+        self.dataset = self.clean_data(self.dataset) # Clean data
+        self.prediction = pd.read_csv(predict_filepath, encoding='cp1252')  # Import prediction dataset
+        self.model = model  # Initialize model
     def clean_data(self, data):
-        """Import and clean data for modelling"""
+        """
+        Clean and transform dataset for model training.
+        param data: a dataframe with all the variables
+        returns: df_clean: a dataframe with only the necessary columns in it
+        """
         print("Cleaning and transforming data")
-        df_encoded = pd.get_dummies(data, columns=['Skies', 'Snow Conditions'])  # Get dummy variables
-        df_clean = df_encoded.drop(['Date', 'Resort Name'], axis=1)  # Dropping datetime and resort name
-        print(df_clean.head())  # Check dataset format
-        return df_clean
+        df_encoded = pd.get_dummies(data, columns=['Skies', 'Snow Conditions']) # Get dummy variables
+        df_clean = df_encoded.drop(['Date', 'Resort Name'], axis=1) # Dropping unimportant columns
+        print(df_clean.head()) # Check dataset format
+        return df_clean # Return cleaned dataset
     def split_data(self):
-        """Split data into X and y train and test"""
-        # Putting feature variable to X
-        # clean_data = self.clean_data(self.dataset)
-        # self.dataset = clean_data
-        X = self.dataset.drop('Score', axis=1)
-        # Putting response variable to y
+        """
+        Split data into X and y train and test.
+        param: None. (Object method)
+        returns: X_train, X_test, y_train, y_test for training and testing data
+        """
+        X = self.dataset.drop('Score', axis=1)  # Split X and y
         y = self.dataset['Score']
+
         # Splitting the data into train and test
         X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.7, random_state=42)
-        return X_train, X_test, y_train, y_test
+        return X_train, X_test, y_train, y_test # Return training and testing dataset
 
     def train(self):
-        """Train best model to predict rating"""
-        # Call in methods to train all the models
-        rf_model, rf_score = self.train_rf()
-        lr_model, lr_score = self.train_lr()
+        """
+        Train all the models and set the best performing model as object model.
+        param: None. Object method
+        returns: None
+        """
 
-        # Compare model score
-        # Select model with the best performance as default model
-        if rf_score > rf_score:
+        # Call in methods to train all the models
+        xbg_model, xbg_score = self.train_xgB()
+        rf_model, rf_score = self.train_rf()
+        en_model, en_score = self.train_elastic_net()
+
+        # Compare model score and select the model with best performance as default model
+        score_comparison = sorted([xbg_score, rf_score, en_score])
+        if score_comparison[0] == xbg_score:
+            self.model = xbg_model
+        if score_comparison[0] == rf_score:
             self.model = rf_model
-        else:
-            self.model = lr_model
-        print(self.model)
+        if score_comparison[0] == en_score:
+            self.mode = en_model
+
+        print(f"the best model is {self.model}") # delete later
 
     def train_rf(self):
-        """Train Random forest model"""
+        """
+        Train random forest model using cleaned dataset.
+        param: None. Object method.
+        returns: classifier_rf, mse: the final model and its loss function score
+        """
+        # Split data for training
         X_train, X_test, y_train, y_test = self.split_data()
-        classifier_rf = RandomForestClassifier(random_state=42, n_jobs=-1, max_depth=5,
-                                               n_estimators=50, oob_score=True)
 
-        # Fitting model (Replace cv grid search here)
-        classifier_rf.fit(X_train, y_train)
-        # Predicting model
-        y_pred = classifier_rf.predict(X_test)
+        # Initiate model
+        regressor_rf = RandomForestRegressor(random_state=42)
+
+        # Fitting model with Grid search CV
+        params = {
+            'n_estimators': [10 ,50 ,100],  # more trees may lead to better performance but consider computational cost
+            'max_depth': [3, 5, None],  # allowing 'None' as an option to let some trees grow fully if needed
+            'max_features': ['sqrt', 'log2', None],
+            # 'min_samples_leaf': [1, 2, 3]
+            # 'min_samples_split': [2, 4, 6],
+        }
+        # Negative mean squared error is commonly used in GridSearchCV for regression tasks
+        scorer = make_scorer(mean_squared_error, greater_is_better=False)
+
+        # Instantiate the grid search model
+        grid_search = GridSearchCV(estimator=regressor_rf,
+                                   param_grid=params,
+                                   cv=4,
+                                   n_jobs=-1, verbose=1, scoring = scorer)
+
+        # Find best model with grid search and save it
+        grid_search.fit(X_train, y_train)
+        best_rf_model = grid_search.best_estimator_
+
+        # Testing model for performance
+        y_pred = best_rf_model.predict(X_test)
 
         # Mean Squared Error
         mse = mean_squared_error(y_test, y_pred)
@@ -87,27 +124,50 @@ class happyski:
         mae = mean_absolute_error(y_test, y_pred)
         print("Mean Absolute Error:", mae)
 
-        # Accuracy
-        accuracy = accuracy_score(y_test, y_pred)
-        print("Accuracy:", accuracy)
-
-        # Confusion Matrix
-        conf_matrix = confusion_matrix(y_test, y_pred)
-        print("Confusion Matrix:\n", conf_matrix)
-
-        # Classification Report (Precision, Recall, F1-Score)
-        class_report = classification_report(y_test, y_pred)
-        print("Classification Report:\n", class_report)
+        # R-squared (Coefficient of Determination)
+        r2 = r2_score(y_test, y_pred)
+        print("R-squared:", r2)
 
         # Return model and score for comparison
-        return classifier_rf, mse
-    def train_lr(self):
-        """Train Linear Regression model"""
-        X_train, X_test, y_train, y_test = self.split_data()
-        linear_model = LinearRegression().fit(X_train, y_train) # Replace with cv grid search
+        return best_rf_model, mse
 
-        # Predicting model
-        y_pred = linear_model.predict(X_test)
+    def train_xgB(self):
+        """
+        Train XGBoost model using cleaned dataset.
+        param: None. Object method.
+        returns: classifier_rf, mse: the final model and its loss function score
+        """
+
+        # Split data for training
+        X_train, X_test, y_train, y_test = self.split_data()
+
+        # Initiate model
+        classifier_xgb = XGBRegressor(objective='reg:squarederror', n_estimators=50)
+
+        # Fitting model with Grid search CV
+        params = {
+            'n_estimators': [50, 100, 150],
+            'max_depth': [3, 5, 7],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'reg_alpha': [0, 0.1, 0.5],
+            'reg_lambda': [1, 1.5, 2]
+        }
+
+        # Scorer for GridSearchCV using negative mean squared error
+        scorer = "neg_mean_squared_error"
+
+        # Instantiate the grid search model
+        grid_search = GridSearchCV(estimator=classifier_xgb,
+                                   param_grid=params,
+                                   cv=4,
+                                   n_jobs=-1, verbose=1, scoring=scorer)
+
+        # Find best model with grid search and save it
+        grid_search.fit(X_train, y_train)
+        best_xgb_model = grid_search.best_estimator_
+
+        # Testing model for performance
+        y_pred = best_xgb_model.predict(X_test)
 
         # Mean Squared Error
         mse = mean_squared_error(y_test, y_pred)
@@ -117,48 +177,108 @@ class happyski:
         mae = mean_absolute_error(y_test, y_pred)
         print("Mean Absolute Error:", mae)
 
+        # R-squared (Coefficient of Determination)
+        r2 = r2_score(y_test, y_pred)
+        print("R-squared:", r2)
+
         # Return model and score for comparison
-        return linear_model, mse
+        return best_xgb_model, mse
+
+    def train_elastic_net(self):
+        """
+        Train linear regression model using cleaned dataset.
+        param: None. Object method.
+        returns: linear_model, mse: the final model and its loss function score
+        """
+        # Split data for training
+
+        X_train, X_test, y_train, y_test = self.split_data()
+
+        # Define the ElasticNet model
+        elastic_net = ElasticNet()
+
+        # Setup a parameter grid for GridSearchCV
+        param_grid = {
+            'alpha': [0.01, 0.1, 1, 10],  # Regularization strength; must be a positive float
+            'l1_ratio': np.linspace(0.01, 1, 10),
+            # Mixing parameter, with 0 being L2 penalty only and 1 being L1 penalty only
+            'max_iter': [1000, 5000],  # Maximum number of iterations taken for the solvers to converge
+            'tol': [0.0001, 0.001]  # Tolerance for the optimization
+        }
+
+        # Setup GridSearchCV
+        grid_search_lr = GridSearchCV(estimator=elastic_net, param_grid=param_grid, cv=5, scoring='neg_mean_squared_error',
+                                   verbose=1)
+
+        # Fit GridSearchCV
+        grid_search_lr.fit(X_train, y_train)
+
+        # Best model
+        best_model_lr = grid_search_lr.best_estimator_
+
+        # Testing model for performance
+        y_pred = best_model_lr.predict(X_test)
+
+        # Mean Squared Error
+        mse = mean_squared_error(y_test, y_pred)
+        print("Mean Squared Error:", mse)
+
+        # Mean Absolute Error
+        mae = mean_absolute_error(y_test, y_pred)
+        print("Mean Absolute Error:", mae)
+
+        r2 = r2_score(y_test, y_pred)
+        print("R-squared:", r2)
+
+        # Return model and score for comparison
+        return best_model_lr, mse
     def ski_model_rate(self):
-        """Make a prediction based on input data"""
-        # Input x variable (single row or dataframe), transform it for model use
-        # After making predictions with current model, ask if user is satisfied
-        # If not satisfied, call in user_predict for them to override
-        # clean_data = self.clean_data(self.prediction)
-        # Clean prediction data
-        # self.prediction = clean_data
+        """
+        Use object model to make prediction score based on user's new data.
+        If user is unsatisfied with model rating, they can manually input a score of their own
+        param: None. Object method.
+        returns: None.
+        """
+        # Prepare prediction data for prediction
         prediction_clean = self.clean_data(self.prediction)
-        # Make prediction with existing model
-        X = prediction_clean.drop('Score', axis=1)
+
+        # Drop score column
+        X_prediction = prediction_clean.drop('Score', axis=1)
+
         # Add missing dummy variables (set = False)
-        X_train = self.dataset.drop('Score', axis=1)  # Get trainset columns
-        model_features = X_train.columns.tolist()
-        missing_cols = set(model_features) - set(X.columns)
+        X_main_dataset = self.dataset.drop('Score', axis=1)  # Get trainset columns
+        model_features = X_main_dataset.columns.tolist()
+        missing_cols = set(model_features) - set(X_prediction.columns)
         for c in missing_cols:  # Add False to testing set columns
-            X[c] = False
+            X_prediction[c] = False
         # Ensure order of columns matches training dataset
-        X = X[model_features]
-        print(X)
+        X_prediction = X_prediction[model_features]
+
         # Making prediction
-        predicted_score = self.model.predict(X)
+        predicted_score = self.model.predict(X_prediction)
+
         # Print predicted score
-        print(f"Predicted: {predicted_score}")
+        for i in range(len(predicted_score)):
+            # Show ski resort data
+            print(self.prediction.loc[i])
+            print(f"{self.prediction.loc[i, 'Resort Name']}'s predicted rating is: {predicted_score[i]}")
 
-        user_input = input("Are you satisfied with this score? (Y/N): ")
-        if user_input == "Y":
+            user_input = input("Are you satisfied with this score? (Y/N): ")
+            if user_input == "Y":
 
-            # Record prediction score to data
-            self.prediction["Score"] = np.round(predicted_score, 2)
-        else:
-            self.user_rate()
-    def user_rate(self):
-        """If user not satisfied, can manually override the prediction score"""
-        # Use loop to show x variable, and allow user to input Y variable
-        user_input = input("Enter your rating: ")
-        self.prediction["Score"] = user_input
+                # Record prediction score to data
+                self.prediction.loc[i, "Score"] = np.round(predicted_score[i], 2)
+            else:
+                # Ask user to input their score
+                user_input = input(f"Enter your rating for {self.prediction.loc[i, 'Resort Name']}: ")
+                self.prediction.loc[i, "Score"] = np.round(float(user_input), 2)
 
     def update(self, data_filepath):
-        """Allow user to update data by giving their own scores"""
+        """
+        Updates the new data and its prediction to the main dataset csv file
+        param data_filepath: The file path that the predicted dataframe will be appended to
+        returns: None
+        """
         # Update prediction score onto main excel cell by writing it in as newest datapoint
         # Write score onto prediction csv, then combine this csv to the main csv
         # Problem: prediction dataset does not have all the dummy variables cause it only has one entry
@@ -166,32 +286,19 @@ class happyski:
         self.prediction.to_csv(data_filepath, mode='a', header=False, index=False)
 
 if __name__ == "__main__":
+
     # Creating an object
     user_happyski = happyski("snow.csv", "snow prediction.csv")
-
-    # Check clean data
-    # clean_data = user_happyski.clean_data(user_happyski.dataset)
-    # clean_test = user_happyski.clean_data(user_happyski.prediction)
-
-    # Check Split
-    # collection_x_y = user_happyski.split_data()
-    # print(collection_x_y)
-
-    # Check train rf
-    # rf = user_happyski.train_rf()
-    # print(rf)
-    # Check train lr
-    # lr = user_happyski.train_lr()
-    # print(lr)
 
     # Check train model comparison
     user_happyski.train()
 
     # Check prediction
     user_happyski.ski_model_rate()
-    print(user_happyski.prediction["Score"])
+
     # Check update
     user_happyski.update("snow.csv")
+
 
 
 
