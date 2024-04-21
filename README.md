@@ -23,6 +23,7 @@ HappySkiKit consists of two primary components:
   - get_user_input(): Captures and processes user input to provide gear suggestions.
  
 ## Technical Flow
+0. Data Prep: Input the resort information you collected into the "snow prediction.csv" file in the same consistent format. 
 1. Initialization: Instantiate the happyski object with your dataset paths.
 2. Data Processing: Automatically clean and preprocess the input data.
 3. Model Training: Use happyski.train() to refine models based on historical data.
