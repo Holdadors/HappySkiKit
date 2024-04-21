@@ -1,5 +1,6 @@
 from happy_ski import happyski
 from ski_gear_recommend import SkiGearRecommender
+__all__ = ['SkiResortAnalytics', 'GearRecommender']
 
 if __name__ == "__main__":
 
