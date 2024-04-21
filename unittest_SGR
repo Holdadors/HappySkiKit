@@ -1,0 +1,30 @@
+import unittest
+
+class TestSkiGearRecommender(unittest.TestCase):
+    def setUp(self):
+        self.recommender = SkiGearRecommender()
+
+    def test_recommend_gear_cold_snow(self):
+        temperature = 30  # cold
+        condition = 'snow'
+        expected_gear = {'insulated jacket', 'gloves', 'wool hat', 'scarf', 'snow goggles', 'snowboard boots', 'snow jacket'}
+        self.assertEqual(self.recommender.recommend_gear(temperature, condition), expected_gear)
+
+    def test_recommend_gear_warm_clear(self):
+        temperature = 60  # warm
+        condition = 'clear'
+        expected_gear = {'sweatshirt'}
+        self.assertEqual(self.recommender.recommend_gear(temperature, condition), expected_gear)
+
+    def test_recommend_lens_high_uv(self):
+        uv_index = 10
+        expected_lens = "Black lens for intense light"
+        self.assertEqual(self.recommender.recommend_lens(uv_index), expected_lens)
+
+    def test_recommend_lens_low_uv(self):
+        uv_index = 1
+        expected_lens = "Clear lens"
+        self.assertEqual(self.recommender.recommend_lens(uv_index), expected_lens)
+
+if __name__ == '__main__':
+    unittest.main()
