@@ -15,6 +15,11 @@ if __name__ == "__main__":
     # Check update
     user_happyski.update("snow.csv")
 
-    # Ask user for snow condition to recommend gear
-    recommender = SkiGearRecommender()
-    recommender.get_user_input()
+    # Ask if user would like to receieve gear recommendation
+    user_ans = input("What would you like to receive gear recommendation? (Y/N): ")
+    if user_ans == "Y":
+        # Ask user for snow condition to recommend gear
+        recommender = SkiGearRecommender()
+        recommender.get_user_input()
+    else:
+        pass

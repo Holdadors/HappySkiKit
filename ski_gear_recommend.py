@@ -72,9 +72,3 @@ class SkiGearRecommender:
             if user_input == "N":
                 break
 
-
-
-# Create an instance of the recommender and use it
-# recommender = SkiGearRecommender()
-# recommender.get_user_input()
-
